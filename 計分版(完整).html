@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>萬用班級搖人系統 (Teacher Eddie 終極排行版 - 自訂隊伍顏色版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        :root {
+            --header-height: 50px;
+            --main-bg: #f0f2f5;
+            --panel-width: 250px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--main-bg);
+            font-family: "Microsoft JhengHei", "Heiti TC", sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* --- 1. 頂部導航列 --- */
+        header {
+            background: white;
+            padding: 0 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            flex-shrink: 0;
+            height: var(--header-height);
+        }
+
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        
+        .copyright-text {
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: #000;
+            margin-right: 20px;
+            letter-spacing: 1px;
+        }
+
+        h1 { margin: 0; font-size: 1.1rem; color: #333; display: flex; align-items: center; gap: 8px; }
+
+        .header-btns { display: flex; gap: 8px; align-items: center;}
+
+        button.nav-btn {
+            border: none; padding: 6px 12px; border-radius: 6px; 
+            cursor: pointer; font-weight: bold; font-size: 0.9rem;
+            display: flex; align-items: center; gap: 5px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button.nav-btn:active { transform: translateY(1px); }
+
+        #groupBtn { background: #7c3aed; color: white; }
+        #groupBtn:hover { background: #6d28d9; }
+        #settingsBtn { background: #334155; color: white; }
+        #settingsBtn:hover { background: #475569; }
+        #clearScoreBtn { background: #ef4444; color: white; }
+        #clearScoreBtn:hover { background: #dc2626; }
+        #syncBtn { background: #059669; color: white; min-width: 140px; justify-content: center; }
+        #syncBtn.off { background: #94a3b8; color: #f1f5f9; }
+        /* 排行榜按鈕 */
+        #rankBtn { background: #f59e0b; color: white; }
+        #rankBtn:hover { background: #d97706; }
+
+        /* --- 2. 主畫面佈局 --- */
+        #main-layout {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - var(--header-height));
+            overflow: hidden;
+            align-items: stretch;
+            position: relative;
+        }
+
+        /* --- 3. 左右計分板 --- */
+        .score-panel {
+            width: var(--panel-width);
+            background: #fff;
+            overflow-y: auto;
+            padding: 5px 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-shrink: 0;
+            z-index: 2;
+        }
+
+        .score-panel.left { border-right: 1px solid #ddd; background: #fdfdfd; }
+        .score-panel.right { border-left: 1px solid #ddd; background: #fdfdfd; }
+
+        .panel-title {
+            font-size: 1rem; font-weight: 800; text-align: center;
+            margin-bottom: 4px; padding-bottom: 4px; border-bottom: 2px solid #eee;
+            position: sticky; top: 0; background: inherit; z-index: 5;
+        }
+        .text-boy { color: #2563eb; }
+        .text-girl { color: #db2777; }
+
+        .student-card {
+            background: white; border: 1px solid #e2e8f0; border-radius: 4px;
+            padding: 2px 6px; 
+            display: flex; flex-direction: column; gap: 1px; 
+            min-height: 42px; 
+            transition: background 0.2s;
+        }
+        .student-card:hover { background: #f8fafc; }
+        .student-card.boy { border-left: 4px solid #3b82f6; }
+        .student-card.girl { border-left: 4px solid #ec4899; }
+        .student-card.highlight {
+            background-color: #fffbeb !important; border-color: #f59e0b;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); transform: scale(1.02);
+        }
+
+        .card-header { display: flex; justify-content: space-between; align-items: center; height: 22px; }
+        .student-name { font-size: 0.95rem; font-weight: bold; color: #333; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer;}
+
+        .score-input {
+            width: 35px; font-size: 0.9rem; text-align: center;
+            border: 1px solid #cbd5e1; border-radius: 4px; padding: 0; font-weight: bold; height: 20px; color: #333;
+        }
+
+        .quick-btns { display: flex; gap: 2px; height: 18px; margin-top: 2px; }
+        .q-btn {
+            border: none; border-radius: 3px; padding: 0; font-size: 0.7rem;
+            cursor: pointer; color: white; font-weight: bold; flex: 1;
+            transition: opacity 0.1s;
+        }
+        .q-btn:hover { opacity: 0.85; }
+        .btn-1 { background-color: #94a3b8; }
+        .btn-2 { background-color: #64748b; }
+        .btn-5 { background-color: #0ea5e9; }
+
+        /* --- 4. 中間遊戲區 --- */
+        #game-area {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            position: relative; overflow: hidden; padding: 5px 0;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+            z-index: 1;
+        }
+
+        #current-class-display {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(255,255,255,0.9); padding: 4px 16px; border-radius: 20px;
+            font-size: 0.9rem; font-weight: bold; color: #475569; pointer-events: none; z-index: 2;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;
+        }
+
+        #game-outer {
+            position: relative; 
+            width: 75vh; height: 75vh; 
+            max-width: 750px; max-height: 750px;
+            min-width: 320px; min-height: 320px;
+            background: #fff; border-radius: 50%;
+            box-shadow: inset 0 0 60px rgba(0,0,0,0.05), 0 15px 35px rgba(0,0,0,0.15);
+            overflow: visible; 
+            border: 12px solid #cbd5e1;
+            background-image: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%);
+            margin-bottom: 10px; flex-shrink: 0;
+            z-index: 1;
+        }
+
+        #game-outer::after {
+            content: '';
+            position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%);
+            width: 140px; height: 45px;
+            background: linear-gradient(to bottom, #334155, #1e293b);
+            border-radius: 0 0 20px 20px; border: 5px solid #94a3b8; border-top: none;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.25); z-index: 0;
+        }
+        
+        canvas { width: 100% !important; height: 100% !important; object-fit: contain; border-radius: 50%; position: relative; z-index: 1; }
+
+        .game-controls {
+            display: flex; flex-direction: column; gap: 8px; align-items: center;
+            background: rgba(255,255,255,0.95); padding: 10px 30px; border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 5; border: 1px solid #fff;
+        }
+
+        .row { display: flex; gap: 15px; align-items: center; }
+
+        button.action-btn {
+            border: none; border-radius: 50px; padding: 10px 40px;
+            color: white; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: transform 0.1s;
+        }
+        #drawBtn { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
+        #drawBtn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(99, 102, 241, 0.4); }
+        #drawBtn:active { transform: translateY(1px); }
+        #drawBtn:disabled { background: #cbd5e1; transform: none; box-shadow: none; cursor: not-allowed; }
+        
+        select { padding: 6px; font-size: 1rem; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;}
+        
+        .mode-switch { background: #f1f5f9; padding: 4px; border-radius: 20px; display: flex; gap: 5px; border: 1px solid #cbd5e1; }
+        .mode-switch label { cursor: pointer; padding: 4px 12px; border-radius: 15px; color: #64748b; font-size: 0.9rem; transition: all 0.2s; font-weight: 600;}
+        .mode-switch input:checked + span { color: #fff; background: #3b82f6; box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3); padding: 4px 12px; border-radius: 15px; }
+        .mode-switch input + span { padding: 4px 5px; }
+
+        /* --- 5. 動畫層與彈窗 --- */
+        #animation-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 300;
+            display: none; justify-content: center; align-items: center;
+        }
+
+        .hero-ball {
+            width: 160px; height: 160px;
+            background: white; border-radius: 50%;
+            border: 8px solid #fbbf24;
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.6);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            position: absolute;
+            animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+        .hero-ball img { width: 90px; height: 90px; }
+        .hero-ball .h-name { font-size: 1.6rem; font-weight: 900; margin-top: 5px; color: #333; }
+
+        @keyframes rollOut {
+            0% { transform: translateY(300px) scale(0.1) rotate(0deg); opacity: 0; }
+            40% { opacity: 1; transform: translateY(-50px) scale(1.2) rotate(720deg); }
+            70% { transform: translateY(20px) scale(1) rotate(1080deg); }
+            100% { transform: translateY(0) scale(1) rotate(1080deg); }
+        }
+
+        .shake-screen { animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .modal-overlay {
+            display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+            justify-content: center; align-items: center; backdrop-filter: blur(3px);
+        }
+        #group-modal { z-index: 100; background: rgba(0,0,0,0.6); }
+        #settings-modal { z-index: 150; background: rgba(0,0,0,0.6); }
+        #winner-modal { z-index: 400; background: rgba(0,0,0,0.6); }
+        #game-over-modal { z-index: 500; background: rgba(0,0,0,0.85); }
+        /* 排行榜 Modal 特別設定 */
+        #leaderboard-modal { z-index: 450; background: rgba(255, 255, 255, 0.95); }
+
+        .modal-box {
+            background: white; padding: 25px; border-radius: 20px; text-align: center;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.4); animation: popIn 0.3s;
+            max-width: 95%; max-height: 95vh; overflow-y: auto; border: 1px solid #e2e8f0;
+        }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .winner-display { display: flex; gap: 20px; justify-content: center; margin: 20px 0; flex-wrap: wrap;}
+        .w-card { display: flex; flex-direction: column; align-items: center; background: #fff; padding: 20px; border-radius: 16px; border: 2px solid #e2e8f0; box-shadow: 0 8px 20px rgba(0,0,0,0.08); position: relative; min-width: 120px;}
+        .w-img { width: 100px; height: 100px; }
+        .w-name { font-size: 2rem; font-weight: 800; margin-top: 10px; }
+        .w-group { font-size: 1.1rem; color: #64748b; font-weight: bold; margin-bottom: 8px; background: #f1f5f9; padding: 4px 12px; border-radius: 20px; }
+        .w-tag-support {
+            position: absolute; top: -12px; right: -12px;
+            background: #ef4444; color: white; font-size: 0.9rem; font-weight: bold;
+            padding: 5px 12px; border-radius: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+            animation: bounce 0.5s;
+        }
+        .modal-btn { background: #334155; color: white; border: none; padding: 12px 50px; border-radius: 30px; cursor: pointer; font-size: 1.1rem; margin-top: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-weight: bold;}
+        .modal-btn:hover { background: #1e293b; transform: translateY(-2px);}
+
+        /* 設定頁面 */
+        #settings-modal .modal-box { width: 600px; text-align: left; }
+        .class-selector-area {
+            background: #f0f9ff; padding: 15px; border-radius: 12px; border: 1px solid #bae6fd;
+            margin-bottom: 20px; display: flex; align-items: center; gap: 15px; font-size: 1rem; flex-wrap: wrap;
+        }
+        .class-selector-area select { flex: 1; padding: 8px; font-weight: bold; color: #0369a1; min-width: 150px; }
+        .class-selector-area input[type="text"] { flex: 1; padding: 8px; border: 1px solid #bae6fd; border-radius: 6px; font-weight: bold; color: #0369a1; min-width: 150px; }
+        .setting-group { margin-bottom: 15px; }
+        .setting-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 1.1rem; }
+        .setting-group textarea { height: 100px; width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem;}
+        .settings-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px;}
+
+        /* --- 分組競賽 --- */
+        #group-modal .modal-box { width: 98%; max-width: 1400px; padding: 15px; display: flex; flex-direction: column; height: 95vh; box-sizing: border-box; }
+        .group-header-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
+        .group-title-row { display: flex; align-items: center; gap: 15px; }
+        .group-controls { display: flex; gap: 6px; flex-wrap: wrap;}
+        .group-btn {
+            background: #7c3aed; color: white; border: none; padding: 6px 12px; 
+            border-radius: 20px; cursor: pointer; font-size: 0.9rem; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.1s;
+        }
+        .group-btn:active { transform: translateY(1px); }
+        .draw-all-btn { background: #f59e0b; }
+        .reset-draw-btn { background: #059669; }
+        .end-game-btn { background: #db2777; border: 2px solid #be185d; color: white; box-shadow: 0 4px 10px rgba(219, 39, 119, 0.4); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(219, 39, 119, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(219, 39, 119, 0); } 100% { box-shadow: 0 0 0 0 rgba(219, 39, 119, 0); } }
+        
+        #group-results { display: flex; flex-wrap: nowrap; gap: 6px; justify-content: space-between; align-items: stretch; flex-grow: 1; overflow-y: hidden; }
+        .group-box {
+            background: #f8fafc; border: 3px solid #e2e8f0; border-radius: 12px;
+            padding: 5px; flex: 1; min-width: 130px; 
+            display: flex; flex-direction: column; height: 100%; transition: all 0.2s;
+        }
+        .group-box.drag-over { background: #eff6ff; border-color: #3b82f6; box-shadow: inset 0 0 15px rgba(59, 130, 246, 0.2); } 
+        
+        .group-header {
+            font-size: 0.95rem; font-weight: 800; color: #334155; 
+            border-bottom: 2px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 4px;
+            text-align: center; display: flex; flex-direction: column; gap: 4px;
+        }
+        .challenge-btn { background: #3b82f6; color: white; border: none; border-radius: 10px; width: 100%; font-size: 0.8rem; padding: 4px 0; cursor: pointer; font-weight: bold; }
+        .group-list { list-style: none; padding: 0; margin: 0 0 5px 0; flex-grow: 1; overflow-y: auto; text-align: center; min-height: 50px; }
+        
+        .draggable-student {
+            margin-bottom: 3px; padding: 3px 5px; font-size: 1rem; font-weight: 800; 
+            background: white; border: 1px solid #cbd5e1; border-radius: 4px;
+            cursor: move; transition: transform 0.1s, box-shadow 0.1s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .draggable-student:hover { transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .draggable-student.already-drawn { opacity: 0.5; text-decoration: line-through; background: #f1f5f9; color: #94a3b8; box-shadow: none; transform: none;}
+        
+        #bench-area {
+            margin-top: 10px; border: 2px dashed #cbd5e1; border-radius: 10px;
+            padding: 8px; background: #f8fafc; flex-shrink: 0;
+            display: flex; flex-direction: column; gap: 5px; min-height: 70px; max-height: 120px; overflow-y: auto;
+        }
+        #bench-title { font-weight: bold; color: #64748b; font-size: 0.85rem; display: flex; justify-content: space-between;}
+        #bench-list { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; padding: 0; margin: 0; min-height: 30px; align-items: center; }
+        #bench-list .draggable-student { font-size: 0.9rem; padding: 2px 8px; margin: 0; background: #e2e8f0; color: #64748b; }
+        
+        .group-score-area { background: #f5f3ff; border-radius: 8px; padding: 4px; border: 1px dashed #8b5cf6; margin-top: auto; flex-shrink: 0; }
+        .group-score-display { display: flex; justify-content: center; align-items: center; gap: 3px; margin-bottom: 3px; }
+        .group-score-input { width: 45px; height: 24px; font-size: 1.1rem; border: 2px solid #8b5cf6; color: #7c3aed; }
+        .group-btn-area { display: flex; gap: 2px; justify-content: center;}
+        .g-btn { border:none; border-radius: 4px; padding: 2px; font-size: 0.75rem; cursor: pointer; color: white; font-weight: bold; flex: 1; transition: opacity 0.1s;}
+        .g-btn:hover { opacity: 0.9; }
+
+        /* Game Over Modal Styles */
+        .go-title { font-size: 2.5rem; color: #fbbf24; text-shadow: 0 4px 0 #b45309; margin: 0 0 20px 0; }
+        .go-winners-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-bottom: 20px; }
+        .go-member-badge { 
+            background: linear-gradient(to bottom, #fff, #fefce8); padding: 8px 15px; 
+            border-radius: 20px; border: 2px solid #fbbf24; font-weight: bold; font-size: 1.2rem; color: #854d0e;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .distribute-section {
+            background: #fff; padding: 20px; border-radius: 15px; margin-top: 20px;
+            border: 1px solid #e2e8f0;
+        }
+        .big-remainder-text {
+            font-size: 4rem; font-weight: 900; color: #dc2626; 
+            text-shadow: 2px 2px 0px #fecaca;
+            margin: 10px 0; animation: heartbeat 1.5s infinite;
+        }
+        @keyframes heartbeat { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        
+        .remainder-list { display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .remainder-btn {
+            background: #fff; border: 2px solid #cbd5e1; color: #64748b;
+            padding: 8px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 1.1rem;
+            transition: all 0.2s;
+        }
+        .remainder-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+        .remainder-btn.selected { 
+            background: #3b82f6; color: white; border-color: #2563eb; 
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4); transform: scale(1.05);
+        }
+
+        /* --- 排行榜樣式 --- */
+        #leaderboard-modal .modal-box { 
+            width: 95vw; height: 90vh; max-width: none; background: #fff; 
+            padding: 20px; box-sizing: border-box; display: flex; flex-direction: column;
+        }
+        .lb-grid {
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+            gap: 12px; 
+            width: 100%; height: 100%; 
+            overflow-y: auto; /* 若螢幕真的太小才捲動 */
+            padding: 10px;
+        }
+        .lb-card {
+            background: #fff; border: 2px solid #e2e8f0; border-radius: 12px;
+            padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative;
+        }
+        .lb-rank {
+            position: absolute; top: -10px; left: -10px; width: 30px; height: 30px;
+            background: #64748b; color: white; border-radius: 50%; font-weight: bold;
+            display: flex; justify-content: center; align-items: center; font-size: 0.9rem;
+            border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        /* 前三名特別樣式 */
+        .lb-card.rank-1 { border-color: #fbbf24; background: #fffbeb; transform: scale(1.05); z-index: 2; box-shadow: 0 8px 15px rgba(251, 191, 36, 0.3); }
+        .lb-card.rank-1 .lb-rank { background: #fbbf24; color: #92400e; font-size: 1.2rem; width: 36px; height: 36px; }
+        .lb-card.rank-2 { border-color: #94a3b8; background: #f8fafc; }
+        .lb-card.rank-2 .lb-rank { background: #94a3b8; width: 34px; height: 34px; }
+        .lb-card.rank-3 { border-color: #d97706; background: #fff7ed; }
+        .lb-card.rank-3 .lb-rank { background: #d97706; }
+        
+        .lb-name { font-size: 1.4rem; font-weight: 800; color: #333; margin: 8px 0; text-align: center; line-height: 1.2;}
+        .lb-score { font-size: 1.8rem; font-weight: 900; color: #2563eb; }
+        .lb-crown { font-size: 1.5rem; position: absolute; top: -18px; right: -5px; animation: bounce 2s infinite; }
+
+        @media (max-width: 800px) {
+            #main-layout { flex-direction: column; overflow-y: auto; }
+            .score-panel { width: 100%; flex-direction: row; flex-wrap: wrap; height: auto; padding: 10px; min-height: 100px; }
+            .student-card { width: 48%; }
+            #game-outer { width: 300px; height: 300px; border-width: 8px;}
+            #group-results { overflow-x: auto; padding-bottom: 15px; }
+            .group-box { min-width: 220px; }
+            .copyright-text { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-left">
+            <h1>🏆 幸運搖人機</h1>
+        </div>
+        
+        <div class="header-btns">
+            <div class="copyright-text">Teacher Eddie製作，版權所有</div>
+            <button id="rankBtn" class="nav-btn" onclick="openLeaderboard()">📊 總成績排行</button>
+            <button id="syncBtn" class="nav-btn" onclick="toggleScoreSync()">🔄 分數連動：開啟</button>
+            <button id="groupBtn" class="nav-btn" onclick="openGroupModal()">👥 隨機分組</button>
+            <button id="settingsBtn" class="nav-btn" onclick="openSettings()">⚙️ 設定名單</button>
+            <button id="clearScoreBtn" class="nav-btn" onclick="confirmClearScores()">🗑️ 清除</button>
+        </div>
+    </header>
+
+    <div id="main-layout">
+        <div class="score-panel left" id="boys-panel"></div>
+        
+        <div id="game-area">
+            <div id="current-class-display">目前班級: <span id="display-class-name">讀取中...</span></div>
+            <div id="game-outer">
+                <div id="game-canvas-container"></div>
+            </div>
+
+            <div class="game-controls">
+                <div class="row">
+                    <div class="mode-switch">
+                        <label onclick="setMode('repeat')">
+                            <input type="radio" name="mode" value="repeat" hidden>
+                            <span>🔄 允許重覆</span>
+                        </label>
+                        <label onclick="setMode('no-repeat')">
+                            <input type="radio" name="mode" value="no-repeat" checked hidden>
+                            <span>🚫 絕不重覆</span>
+                        </label>
+                    </div>
+                    <span id="status-text" style="font-size: 0.8rem; color: #666;">人數載入中...</span>
+                    <button onclick="resetGame()" style="font-size:0.8rem; padding: 2px 6px; cursor:pointer;" title="重置">↺</button>
+                </div>
+                <div class="row">
+                    <select id="drawCount">
+                        <option value="1">抽 1 人</option>
+                        <option value="2">抽 2 人</option>
+                        <option value="3">抽 3 人</option>
+                        <option value="4">抽 4 人</option>
+                        <option value="5">抽 5 人</option>
+                    </select>
+                    <button id="drawBtn" class="action-btn" onclick="startDraw()">開始搖人</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="score-panel right" id="girls-panel"></div>
+    </div>
+
+    <audio id="shakerSound" loop preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2026/2026-preview.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="successSound" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="animation-layer"></div>
+
+    <div id="winner-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="margin:0 0 15px 0; color:#555;">🎉 恭喜同學 🎉</h2>
+            <div class="winner-display" id="modal-winners"></div>
+            <button class="modal-btn" onclick="closeModal('winner-modal')">確定</button>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay">
+        <div class="modal-box" style="background: linear-gradient(to bottom right, #fff, #fff7ed); border: 4px solid #fbbf24;">
+            <h1 class="go-title">🏆 比賽結算 🏆</h1>
+            
+            <div id="go-content">
+                </div>
+
+            <div class="settings-actions" style="justify-content: center;">
+                <button class="modal-btn" style="background:#dc2626;" onclick="closeModal('game-over-modal')">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="leaderboard-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h1 style="margin:0 0 15px 0; color:#333; font-size:2rem;">🏆 總成績排行榜</h1>
+            <div id="leaderboard-grid" class="lb-grid">
+                </div>
+            <div style="margin-top:10px;">
+                <button class="modal-btn" onclick="closeModal('leaderboard-modal')">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="margin-top:0;">設定班級名單</h2>
+            <div class="class-selector-area">
+                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                    <label style="font-size:0.9rem; color:#666;">切換班級：</label>
+                    <select id="classSelector" onchange="changeClassSlot(this.value)">
+                        </select>
+                </div>
+                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                    <label style="font-size:0.9rem; color:#666;">班級名稱 (可修改)：</label>
+                    <input type="text" id="classNameInput" placeholder="輸入班級名稱">
+                </div>
+            </div>
+            <div class="setting-group">
+                <label for="boysInput" style="color:#2563eb;">👦 男生名單</label>
+                <textarea id="boysInput"></textarea>
+            </div>
+            <div class="setting-group">
+                <label for="girlsInput" style="color:#db2777;">👧 女生名單</label>
+                <textarea id="girlsInput"></textarea>
+            </div>
+
+            <div class="setting-group" style="border-top:2px dashed #e2e8f0; padding-top:15px; margin-top:15px;">
+                <label style="color:#475569;">📦 數據備份與還原</label>
+                <div style="display:flex; gap:10px; margin-top:5px;">
+                    <button class="nav-btn" style="background:#0284c7; color:white; flex:1; justify-content:center;" onclick="exportData()">⬇️ 下載備份</button>
+                    <button class="nav-btn" style="background:#e11d48; color:white; flex:1; justify-content:center;" onclick="document.getElementById('importFile').click()">⬆️ 還原備份</button>
+                    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
+                </div>
+                <p style="font-size:0.8rem; color:#94a3b8; margin:5px 0 0 0;">* 請定期備份以防資料遺失</p>
+            </div>
+
+            <div class="settings-actions">
+                <button class="nav-btn btn-cancel" onclick="closeModal('settings-modal')">取消</button>
+                <button class="nav-btn btn-save" onclick="saveSettings()">💾 儲存並更新</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="group-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="group-header-controls">
+                <div class="group-title-row">
+                    <h2 style="margin:0; color:#4c1d95;">🎲 分組競賽</h2>
+                    <div class="mode-switch" style="font-size:0.85rem">
+                        <label onclick="setGroupMode('repeat')">
+                            <input type="radio" name="group-mode" value="repeat" hidden>
+                            <span>🔄 允許重覆</span>
+                        </label>
+                        <label onclick="setGroupMode('no-repeat')">
+                            <input type="radio" name="group-mode" value="no-repeat" checked hidden>
+                            <span>🚫 絕不重覆</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="group-controls">
+                    <button class="group-btn" onclick="generateGroups(2)">分2組</button>
+                    <button class="group-btn" onclick="generateGroups(3)">分3組</button>
+                    <button class="group-btn" onclick="generateGroups(4)">分4組</button>
+                    <button class="group-btn" onclick="generateGroups(5)">分5組</button>
+                    <button class="group-btn draw-all-btn" onclick="drawOneFromAllGroups()">⚡ 全組各抽一位</button>
+                    <button class="group-btn reset-draw-btn" onclick="resetGroupDraws()">🔄 重置抽籤</button>
+                    <button class="group-btn group-reset-btn" onclick="resetGroupScores()">歸零分數</button>
+                    <button class="group-btn end-game-btn" onclick="endGame()">🏁 遊戲結束 (頒獎)</button>
+                </div>
+                <button class="nav-btn btn-cancel" onclick="closeModal('group-modal')">X</button>
+            </div>
+
+            <div id="group-results">
+                <div id="group-placeholder" style="color:#999; font-style:italic; width:100%; margin-top: 50px;">
+                    請點選上方按鈕進行隨機分組...
+                </div>
+            </div>
+
+            <div id="bench-area" ondrop="drop(event, -1)" ondragover="allowDrop(event)">
+                <div id="bench-title">
+                    <span>🚫 休息/暫停區 (拖曳學生到此處將不參與抽籤)</span>
+                    <span style="font-size:0.8rem">💡 提示：可直接拖曳名字調整分組</span>
+                </div>
+                <ul id="bench-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 圖片資源 ---
+        const boyImgPath = 'images/boy.png';
+        const girlImgPath = 'images/girl.png';
+
+        const boyImg = new Image(); boyImg.src = boyImgPath;
+        const girlImg = new Image(); girlImg.src = girlImgPath;
+
+        // --- 2. 資料管理 ---
+        const defaultBoys = ["Edison", "Ryan張", "Ryan蒲", "Ray", "Ben", "Ian", "Jasper", "Eason", "Jerry", "Chuck", "Ethan"];
+        const defaultGirls = ["Bonnie", "Anny", "Bella", "Anna", "Helen"];
+        
+        const CLASS_SLOTS = 10;
+        let classDataStore = [];
+        let currentClassIndex = 0;
+        let boysList = [], girlsList = [], fullData = [];
+        
+        let currentGroups = [];
+        let benchedStudents = [];
+        let currentGroupScores = [0,0,0,0,0];
+        let currentGroupColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+        let groupDrawMode = 'no-repeat';
+
+        let isScoreSyncOn = true;
+        
+        // [New] Global variable for remainder tracking per group
+        let remainderSelections = {}; 
+
+        function initClassData() {
+            const storedData = localStorage.getItem('classGame_Manager_v1');
+            if (storedData) {
+                let parsedData = JSON.parse(storedData);
+                if (parsedData.length < CLASS_SLOTS) {
+                    for (let i = parsedData.length; i < CLASS_SLOTS; i++) {
+                        parsedData.push({
+                            id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
+                            boys: [], girls: []
+                        });
+                    }
+                }
+                classDataStore = parsedData;
+                const lastIndex = localStorage.getItem('classGame_currentIndex');
+                currentClassIndex = lastIndex ? parseInt(lastIndex) : 0;
+            } else {
+                classDataStore = Array.from({ length: CLASS_SLOTS }, (_, i) => ({
+                    id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
+                    boys: i === 0 ? [...defaultBoys] : [], girls: i === 0 ? [...defaultGirls] : []
+                }));
+                saveToStorage();
+            }
+            loadCurrentClass();
+        }
+
+        function loadCurrentClass() {
+            const currentData = classDataStore[currentClassIndex];
+            boysList = currentData.boys || [];
+            girlsList = currentData.girls || [];
+            document.getElementById('display-class-name').innerText = currentData.name;
+            document.getElementById('classNameInput').value = currentData.name;
+            updateFullData();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('classGame_Manager_v1', JSON.stringify(classDataStore));
+            localStorage.setItem('classGame_currentIndex', currentClassIndex);
+        }
+
+        function updateFullData() {
+            fullData = [
+                ...boysList.map(n => ({name: n, gender: 'boy'})),
+                ...girlsList.map(n => ({name: n, gender: 'girl'}))
+            ];
+        }
+
+        function exportData() {
+            const dataToExport = {
+                data: classDataStore,
+                currentIndex: currentClassIndex,
+                timestamp: new Date().toISOString()
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            const dateStr = new Date().toISOString().slice(0,10);
+            downloadAnchorNode.setAttribute("download", `TeacherEddie_LuckyDraw_Backup_${dateStr}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importData(inputElement) {
+            const file = inputElement.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedObj = JSON.parse(e.target.result);
+                    if (importedObj && importedObj.data && Array.isArray(importedObj.data)) {
+                        if(confirm("確定要還原備份嗎？\n這將覆蓋目前所有的班級與分數資料！")) {
+                            classDataStore = importedObj.data;
+                            currentClassIndex = importedObj.currentIndex || 0;
+                            saveToStorage();
+                            loadCurrentClass();
+                            renderScoreBoard();
+                            resetGame();
+                            resetGroupStateOnClassChange();
+                            closeModal('settings-modal');
+                            alert("還原成功！");
+                        }
+                    } else {
+                        alert("檔案格式錯誤！");
+                    }
+                } catch (err) {
+                    alert("讀取檔案失敗：" + err);
+                }
+            };
+            reader.readAsText(file);
+            inputElement.value = '';
+        }
+
+        // --- 3. 設定與分組邏輯 ---
+        function openSettings() {
+            renderClassOptions();
+            document.getElementById('classSelector').value = currentClassIndex;
+            document.getElementById('classNameInput').value = classDataStore[currentClassIndex].name;
+            document.getElementById('boysInput').value = boysList.join(', ');
+            document.getElementById('girlsInput').value = girlsList.join(', ');
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function renderClassOptions() {
+            const selector = document.getElementById('classSelector');
+            selector.innerHTML = '';
+            classDataStore.forEach((cls, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.innerText = cls.name;
+                selector.appendChild(opt);
+            });
+        }
+
+        function changeClassSlot(index) {
+            saveCurrentInputToMemory();
+            currentClassIndex = parseInt(index);
+            const newData = classDataStore[currentClassIndex];
+            document.getElementById('classNameInput').value = newData.name;
+            document.getElementById('boysInput').value = newData.boys.join(', ');
+            document.getElementById('girlsInput').value = newData.girls.join(', ');
+            saveToStorage();
+            loadCurrentClass();
+            renderScoreBoard();
+            resetGame();
+            resetGroupStateOnClassChange();
+        }
+
+        function saveCurrentInputToMemory() {
+            const currentName = document.getElementById('classNameInput').value.trim() || `班級 ${currentClassIndex + 1}`;
+            classDataStore[currentClassIndex].name = currentName;
+            classDataStore[currentClassIndex].boys = parseInput(document.getElementById('boysInput').value);
+            classDataStore[currentClassIndex].girls = parseInput(document.getElementById('girlsInput').value);
+        }
+
+        function resetGroupStateOnClassChange() {
+            currentGroups = [];
+            benchedStudents = [];
+            currentGroupScores = [0,0,0,0,0];
+            
+            const resultContainer = document.getElementById('group-results');
+            resultContainer.innerHTML = `
+                <div id="group-placeholder" style="color:#999; font-style:italic; width:100%; margin-top: 50px;">
+                    請點選上方按鈕進行隨機分組...
+                </div>
+            `;
+            document.getElementById('bench-list').innerHTML = '';
+        }
+
+        function openGroupModal() { document.getElementById('group-modal').style.display = 'flex'; }
+
+        function setGroupMode(mode) {
+            groupDrawMode = mode;
+            const inputs = document.getElementsByName('group-mode');
+            inputs.forEach(input => {
+                if (input.value === mode) input.checked = true;
+            });
+        }
+
+        function generateGroups(numGroups) {
+            if (fullData.length === 0) { alert("目前沒有學生名單！"); return; }
+            let shuffled = [...fullData].sort(() => 0.5 - Math.random());
+            currentGroups = Array.from({ length: numGroups }, () => []);
+            benchedStudents = [];
+            currentGroupScores = Array(numGroups).fill(0);
+            currentGroupColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+
+            shuffled.forEach((student, index) => { 
+                currentGroups[index % numGroups].push({ ...student, drawn: false }); 
+            });
+            renderGroupsUI();
+        }
+        
+        function setGroupColor(index, color) {
+            currentGroupColors[index] = color;
+            renderGroupsUI();
+        }
+
+        function renderGroupsUI() {
+            const resultContainer = document.getElementById('group-results');
+            document.getElementById('group-placeholder')?.remove(); 
+            resultContainer.innerHTML = ''; 
+
+            currentGroups.forEach((group, i) => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'group-box';
+                groupDiv.dataset.groupIndex = i;
+                const themeColor = currentGroupColors[i] || '#cbd5e1';
+                groupDiv.style.borderColor = themeColor;
+                groupDiv.style.backgroundColor = themeColor + '10'; 
+
+                groupDiv.ondrop = (e) => drop(e, i);
+                groupDiv.ondragover = (e) => allowDrop(e);
+                groupDiv.ondragleave = (e) => e.currentTarget.classList.remove('drag-over');
+
+                let listHtml = `<ul class="group-list">`;
+                group.forEach((s, idx) => {
+                    const colorClass = s.gender === 'boy' ? 'text-boy' : 'text-girl';
+                    const drawnClass = s.drawn ? 'already-drawn' : '';
+                    listHtml += `
+                        <li class="draggable-student ${colorClass} ${drawnClass}" draggable="true" ondragstart="drag(event, ${i}, ${idx})">
+                            ${s.name}
+                        </li>`;
+                });
+                listHtml += `</ul>`;
+
+                groupDiv.innerHTML = `
+                    <div class="group-header" style="border-bottom-color: ${themeColor}; color: ${themeColor}; filter: brightness(0.7);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:4px;">
+                            <span>第 ${i + 1} 組 (${group.length}人)</span>
+                            <input type="color" value="${themeColor}" onchange="setGroupColor(${i}, this.value)" style="border:none; width:24px; height:24px; background:none; padding:0; cursor:pointer;" title="設定隊伍顏色">
+                        </div>
+                        <button class="challenge-btn" style="background-color:${themeColor}" onclick="drawMemberFromGroup(${i})">🎲 抽一位</button>
+                    </div>
+                    ${listHtml}
+                    <div class="group-score-area" style="border-color:${themeColor}">
+                        <div class="group-score-display">
+                            <span>分:</span>
+                            <input type="number" id="group-score-${i}" class="group-score-input" value="${currentGroupScores[i]}" onchange="updateGroupScoreVal(${i}, this.value)" style="border-color:${themeColor}; color:${themeColor}">
+                        </div>
+                        <div class="group-btn-area">
+                            <button class="g-btn bg-p1" style="background:${themeColor}; opacity:0.6;" onclick="addGroupScore(${i}, 1)">+1</button>
+                            <button class="g-btn bg-p2" style="background:${themeColor}; opacity:0.8;" onclick="addGroupScore(${i}, 2)">+2</button>
+                            <button class="g-btn bg-p5" style="background:${themeColor};" onclick="addGroupScore(${i}, 5)">+5</button>
+                        </div>
+                        <div style="display:flex; gap:3px; margin-top:3px; align-items:center;">
+                            <input type="number" id="manual-group-input-${i}" placeholder="自訂" class="group-score-input" style="width:50px; flex:1; font-size:0.9rem; border-color:#ccc; color:#333;">
+                            <button class="g-btn" style="background:#64748b; padding:2px 8px; flex:0 0 auto;" onclick="applyGroupManualScore(${i})">確認</button>
+                        </div>
+                    </div>
+                `;
+                resultContainer.appendChild(groupDiv);
+            });
+            renderBenchUI();
+        }
+        
+        function applyGroupManualScore(index) {
+            const input = document.getElementById(`manual-group-input-${index}`);
+            const val = parseInt(input.value);
+            if(!isNaN(val) && val !== 0) {
+                addGroupScore(index, val);
+                input.value = '';
+            }
+        }
+
+        function renderBenchUI() {
+            const benchList = document.getElementById('bench-list');
+            benchList.innerHTML = '';
+            benchedStudents.forEach((s, idx) => {
+                const li = document.createElement('li');
+                li.className = 'draggable-student';
+                if(s.drawn) li.classList.add('already-drawn');
+                li.draggable = true;
+                li.innerText = s.name;
+                li.ondragstart = (e) => drag(e, -1, idx);
+                benchList.appendChild(li);
+            });
+        }
+
+        function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
+        function drag(ev, sourceGroupIndex, studentIndex) {
+            ev.dataTransfer.setData("srcGroup", sourceGroupIndex);
+            ev.dataTransfer.setData("srcIndex", studentIndex);
+        }
+        function drop(ev, targetGroupIndex) {
+            ev.preventDefault();
+            document.querySelectorAll('.group-box, #bench-area').forEach(el => el.classList.remove('drag-over'));
+            const srcGroup = parseInt(ev.dataTransfer.getData("srcGroup"));
+            const srcIndex = parseInt(ev.dataTransfer.getData("srcIndex"));
+            if (srcGroup === targetGroupIndex) return;
+
+            let student;
+            if (srcGroup === -1) {
+                student = benchedStudents[srcIndex];
+                benchedStudents.splice(srcIndex, 1);
+            } else {
+                student = currentGroups[srcGroup][srcIndex];
+                currentGroups[srcGroup].splice(srcIndex, 1);
+            }
+            if (targetGroupIndex === -1) benchedStudents.push(student);
+            else currentGroups[targetGroupIndex].push(student);
+            renderGroupsUI();
+        }
+
+        // --- 華麗登場動畫邏輯 & 音效 ---
+        function playWinnerSound() {
+            const audio = document.getElementById('successSound');
+            if(audio) {
+                audio.currentTime = 0;
+                audio.play().catch(e => console.log("Audio play failed", e));
+            }
+        }
+
+        function playHeroLandingAnimation(winners, callback) {
+            const layer = document.getElementById('animation-layer');
+            layer.innerHTML = '';
+            layer.style.display = 'flex';
+
+            playWinnerSound();
+
+            winners.forEach((w, index) => {
+                const ball = document.createElement('div');
+                ball.className = 'hero-ball';
+                ball.style.animation = `rollOut 0.8s forwards ${index * 0.1}s`; 
+                
+                const imgSrc = w.gender === 'boy' ? boyImgPath : girlImgPath;
+                ball.innerHTML = `
+                    <img src="${imgSrc}">
+                    <div class="h-name">${w.name}</div>
+                `;
+                layer.appendChild(ball);
+            });
+
+            setTimeout(() => {
+                document.body.classList.add('shake-screen');
+                setTimeout(() => document.body.classList.remove('shake-screen'), 300);
+            }, 600);
+
+            setTimeout(() => {
+                layer.style.display = 'none';
+                layer.innerHTML = '';
+                if (callback) callback();
+            }, 1800);
+        }
+
+        function drawMemberFromGroup(groupIndex) {
+            playWinnerSound();
+            const groupMembers = currentGroups[groupIndex];
+            if (!groupMembers || groupMembers.length === 0) { alert("這組沒人！"); return; }
+            
+            let candidates = groupMembers;
+            let isRecycled = false;
+
+            if (groupDrawMode === 'no-repeat') {
+                const freshCandidates = groupMembers.filter(s => !s.drawn);
+                if (freshCandidates.length > 0) candidates = freshCandidates;
+                else {
+                    isRecycled = true;
+                    if(!confirm(`第 ${groupIndex+1} 組所有人都被抽過了！\n是否要隨機「借用」一位同學再次上場？`)) return;
+                }
+            }
+
+            const winnerData = candidates[Math.floor(Math.random() * candidates.length)];
+            
+            if (groupDrawMode === 'no-repeat' && !isRecycled) {
+                winnerData.drawn = true;
+                renderGroupsUI();
+            }
+
+            const winnerDisplay = { ...winnerData, groupName: `第 ${groupIndex + 1} 組`, groupIndex: groupIndex, isRecycled: isRecycled };
+            
+            playHeroLandingAnimation([winnerDisplay], () => {
+                showModal('winner-modal', [winnerDisplay]);
+            });
+        }
+
+        function drawOneFromAllGroups() {
+            playWinnerSound();
+            if (currentGroups.length === 0) { alert("請先分組！"); return; }
+            let winners = [];
+            let uiNeedsUpdate = false;
+            
+            currentGroups.forEach((group, i) => {
+                if(group.length > 0) {
+                    let candidates = group;
+                    let isRecycled = false;
+
+                    if (groupDrawMode === 'no-repeat') {
+                        const freshCandidates = group.filter(s => !s.drawn);
+                        if (freshCandidates.length > 0) candidates = freshCandidates;
+                        else {
+                            candidates = group;
+                            isRecycled = true;
+                        }
+                    }
+
+                    const w_data = candidates[Math.floor(Math.random() * candidates.length)];
+                    
+                    if (groupDrawMode === 'no-repeat' && !isRecycled) {
+                        const originalStudent = group.find(s => s.name === w_data.name);
+                        if(originalStudent) originalStudent.drawn = true;
+                        uiNeedsUpdate = true;
+                    }
+
+                    winners.push({ ...w_data, groupName: `第 ${i+1} 組`, groupIndex: i, isRecycled: isRecycled });
+                }
+            });
+
+            if(winners.length === 0) { alert("所有組別都沒人！"); return; }
+            if (uiNeedsUpdate) renderGroupsUI();
+            
+            playHeroLandingAnimation(winners, () => {
+                showModal('winner-modal', winners);
+            });
+        }
+
+        function resetGroupDraws() {
+            if(confirm("確定要重置所有人的抽籤狀態嗎？\n(所有人將變回未被選中狀態，分數保留)")) {
+                currentGroups.forEach(group => group.forEach(s => s.drawn = false));
+                renderGroupsUI();
+            }
+        }
+
+        function updateGroupScoreVal(idx, val) { currentGroupScores[idx] = parseInt(val); }
+        function addGroupScore(idx, pts) { currentGroupScores[idx] += pts; renderGroupsUI(); }
+        
+        function addScoreInModal(groupIdx, points, btnElement) {
+            addGroupScore(groupIdx, points);
+            const originalText = btnElement.innerText;
+            btnElement.innerText = "👌";
+            btnElement.style.transform = "scale(1.2)";
+            btnElement.style.backgroundColor = "#10b981"; 
+            setTimeout(() => {
+                btnElement.innerText = originalText;
+                btnElement.style.transform = "scale(1)";
+                btnElement.style.backgroundColor = ""; 
+            }, 600);
+        }
+        
+        function addManualScore(groupIdx, name, btnElement) {
+            const input = document.getElementById(`manual-score-${name}`);
+            if(!input) return;
+            const points = parseInt(input.value);
+            if(isNaN(points)) return;
+            addScoreInModal(groupIdx, points, btnElement);
+            input.value = '';
+        }
+
+        function resetGroupScores() {
+            if(confirm("確定歸零？")) {
+                currentGroupScores.fill(0);
+                renderGroupsUI();
+            }
+        }
+
+        function parseInput(str) { return str.split(/[\n,，、]/).map(s => s.trim()).filter(s => s.length > 0); }
+        function saveSettings() {
+            saveCurrentInputToMemory();
+            saveToStorage();
+            loadCurrentClass();
+            renderScoreBoard();
+            resetGame();
+            closeModal('settings-modal');
+        }
+
+        // --- 4. 介面與計分 (含連動邏輯) ---
+        function renderScoreBoard() {
+            const boysPanel = document.getElementById('boys-panel');
+            const girlsPanel = document.getElementById('girls-panel');
+            boysPanel.innerHTML = '<div class="panel-title text-boy">男生 (Boys)</div>';
+            girlsPanel.innerHTML = '<div class="panel-title text-girl">女生 (Girls)</div>';
+
+            function createCard(name, gender) {
+                const div = document.createElement('div');
+                div.className = `student-card ${gender}`;
+                div.id = `card-${name}`;
+                div.innerHTML = `
+                    <div class="card-header">
+                        <span class="student-name" title="${name}" onclick="highlightStudent('${name}')">${name}</span>
+                        <input type="number" id="score-${name}" class="score-input" value="0" onclick="this.select()">
+                    </div>
+                    <div class="quick-btns">
+                        <button class="q-btn btn-1" onclick="addScore('${name}', 1)">+1</button>
+                        <button class="q-btn btn-2" onclick="addScore('${name}', 2)">+2</button>
+                        <button class="q-btn btn-5" onclick="addScore('${name}', 5)">+5</button>
+                    </div>
+                `;
+                return div;
+            }
+            boysList.forEach(name => boysPanel.appendChild(createCard(name, 'boy')));
+            girlsList.forEach(name => girlsPanel.appendChild(createCard(name, 'girl')));
+        }
+
+        function toggleScoreSync() {
+            isScoreSyncOn = !isScoreSyncOn;
+            const btn = document.getElementById('syncBtn');
+            if (isScoreSyncOn) {
+                btn.innerText = "🔄 分數連動：開啟";
+                btn.classList.remove('off');
+            } else {
+                btn.innerText = "🔄 分數連動：關閉";
+                btn.classList.add('off');
+            }
+        }
+
+        function addScore(name, points, allowSync = true) {
+            const input = document.getElementById(`score-${name}`);
+            if(!input) return;
+            input.value = (parseInt(input.value) || 0) + points;
+            
+            input.style.backgroundColor = "#d1fae5";
+            setTimeout(() => input.style.backgroundColor = "#fff", 200);
+
+            if (isScoreSyncOn && allowSync) {
+                currentGroups.forEach((group, groupIdx) => {
+                    const student = group.find(s => s.name === name);
+                    if (student) {
+                        currentGroupScores[groupIdx] += points;
+                        const groupInput = document.getElementById(`group-score-${groupIdx}`);
+                        if(groupInput) groupInput.value = currentGroupScores[groupIdx];
+                    }
+                });
+            }
+        }
+
+        function confirmClearScores() {
+            if(confirm("歸零所有學生分數？")) document.querySelectorAll('.score-input').forEach(input => input.value = 0);
+        }
+
+        function highlightWinners(winners) {
+            document.querySelectorAll('.student-card').forEach(c => c.classList.remove('highlight'));
+            winners.forEach(w => {
+                const card = document.getElementById(`card-${w.name}`);
+                if (card) {
+                    card.classList.add('highlight');
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+        }
+
+        function highlightStudent(name) {
+            const card = document.getElementById(`card-${name}`);
+            if(card) {
+                card.classList.add('highlight');
+                setTimeout(()=>card.classList.remove('highlight'), 1000);
+            }
+        }
+
+        // --- 排行榜邏輯 (新增) ---
+        function openLeaderboard() {
+            const grid = document.getElementById('leaderboard-grid');
+            grid.innerHTML = '';
+
+            let allStudents = [];
+            document.querySelectorAll('.score-input').forEach(input => {
+                const name = input.id.replace('score-', '');
+                const score = parseInt(input.value) || 0;
+                allStudents.push({ name: name, score: score });
+            });
+
+            allStudents.sort((a, b) => b.score - a.score);
+
+            allStudents.forEach((s, index) => {
+                const rank = index + 1;
+                let rankClass = '';
+                let crown = '';
+                if(rank === 1) { rankClass = 'rank-1'; crown = '<div class="lb-crown">👑</div>'; }
+                else if(rank === 2) rankClass = 'rank-2';
+                else if(rank === 3) rankClass = 'rank-3';
+
+                const div = document.createElement('div');
+                div.className = `lb-card ${rankClass}`;
+                div.innerHTML = `
+                    <div class="lb-rank">${rank}</div>
+                    ${crown}
+                    <div class="lb-name">${s.name}</div>
+                    <div class="lb-score">${s.score}</div>
+                `;
+                grid.appendChild(div);
+            });
+
+            document.getElementById('leaderboard-modal').style.display = 'flex';
+        }
+
+        // --- 5. 遊戲結束與頒獎邏輯 (修改後：支援全隊伍同步均分/獨得) ---
+        function endGame() {
+            if (currentGroups.length === 0) { alert("還沒有分組喔！"); return; }
+            
+            playWinnerSound();
+
+            // Find max score for visual highlighting only
+            let maxScore = -99999;
+            currentGroupScores.forEach(s => { if(s > maxScore) maxScore = s; });
+            
+            const contentDiv = document.getElementById('go-content');
+            
+            // 1. Controls Header
+            let html = `
+                <div style="background:#f0f9ff; padding:15px; border-radius:12px; margin-bottom:20px; border:2px dashed #bae6fd; text-align:center;">
+                    <h3 style="margin:0 0 10px 0; color:#0369a1;">🏁 獎勵結算 (適用所有隊伍)</h3>
+                    <p style="margin:0 0 15px 0; font-size:0.9rem; color:#64748b;">請選擇一種分配方式，將一次應用於所有隊伍</p>
+                    <div style="display:flex; gap:15px; justify-content:center; flex-wrap:wrap;">
+                        <button class="modal-btn" style="margin-top:0; background:#059669; min-width:180px;" onclick="applyGlobalSplit(this)">
+                            ➗ 所有隊伍均分
+                        </button>
+                        <button class="modal-btn" style="margin-top:0; background:#7c3aed; min-width:180px;" onclick="applyGlobalFull(this)">
+                            🎁 所有隊伍獨得
+                        </button>
+                    </div>
+                </div>
+                <div style="max-height: 60vh; overflow-y: auto; padding-right: 5px;">
+            `;
+
+            // 2. List All Groups
+            currentGroups.forEach((group, idx) => {
+                // Reset selection state for this group
+                remainderSelections[idx] = []; 
+                
+                const score = currentGroupScores[idx];
+                const isWinner = score === maxScore && score > 0;
+                const borderStyle = isWinner ? 'border: 3px solid #fbbf24; background: linear-gradient(to bottom, #fff, #fffbeb);' : 'border: 2px solid #e2e8f0; background: #fff;';
+                const crownHtml = isWinner ? '<div style="position:absolute; top:-15px; right:-10px; font-size:2.5rem; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2)); animation: bounce 2s infinite;">👑</div>' : '';
+
+                html += `
+                    <div style="margin-bottom: 20px; padding:15px; border-radius:15px; ${borderStyle} position:relative; text-align:left;">
+                        ${crownHtml}
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:10px;">
+                            <span style="font-size:1.3rem; color:#333; font-weight:800;">第 ${idx + 1} 組</span>
+                            <span style="font-size:1.5rem; color:#2563eb; font-weight:900;">${score} 分</span>
+                        </div>
+                        
+                        <div class="go-winners-container" style="justify-content: flex-start; gap:8px;">
+                            ${group.length > 0 ? group.map(m => `<div class="go-member-badge" style="font-size:1rem; padding:4px 12px; border-width:1px;">${m.name}</div>`).join('') : '<span style="color:#999;">本組無成員</span>'}
+                        </div>
+
+                        <div id="status-area-${idx}" style="margin-top:10px; font-weight:bold; color:#64748b; font-size:0.95rem;">
+                            準備就緒
+                        </div>
+                        <div id="remainder-area-${idx}" style="display:none; margin-top:15px; background:#fff7ed; padding:10px; border-radius:8px; border:1px dashed #f59e0b;"></div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`; // Close scroll container
+
+            contentDiv.innerHTML = html;
+            document.getElementById('game-over-modal').style.display = 'flex';
+        }
+
+        function applyGlobalFull(btn) {
+            if(!confirm("確定要讓「所有隊伍」的成員都獲得該組的「完整總分」嗎？")) return;
+
+            currentGroups.forEach((group, idx) => {
+                const score = currentGroupScores[idx];
+                if(group.length > 0 && score !== 0) {
+                    group.forEach(m => addScore(m.name, score, false));
+                    document.getElementById(`status-area-${idx}`).innerHTML = `<span style="color:#7c3aed; font-weight:bold;">✅ 已全員獲得 ${score} 分</span>`;
+                } else {
+                    document.getElementById(`status-area-${idx}`).innerHTML = `<span>(無成員或0分，略過)</span>`;
+                }
+            });
+            
+            btn.disabled = true;
+            btn.innerText = "已執行";
+            btn.previousElementSibling.disabled = true; 
+            alert("🎉 所有分數分配完畢！");
+        }
+
+        function applyGlobalSplit(btn) {
+            if(!confirm("確定要將各組總分「平均分配」給該組成員嗎？(若有餘數將手動分配)")) return;
+            
+            btn.disabled = true;
+            btn.innerText = "處理中...";
+            btn.nextElementSibling.disabled = true;
+
+            let hasRemainder = false;
+
+            currentGroups.forEach((group, idx) => {
+                const score = currentGroupScores[idx];
+                const count = group.length;
+                
+                if(count === 0 || score === 0) {
+                    document.getElementById(`status-area-${idx}`).innerHTML = `<span>(無成員或0分，略過)</span>`;
+                    return;
+                }
+
+                const avg = Math.floor(score / count);
+                const remainder = score % count;
+
+                if(avg > 0) {
+                    group.forEach(m => addScore(m.name, avg, false));
+                }
+
+                if(remainder > 0) {
+                    hasRemainder = true;
+                    document.getElementById(`status-area-${idx}`).innerHTML = `<span style="color:#d97706; font-weight:bold;">⚠️ 產生餘數 ${remainder} 分，請下方手動分配</span>`;
+                    
+                    const area = document.getElementById(`remainder-area-${idx}`);
+                    area.style.display = 'block';
+                    
+                    area.innerHTML = `
+                        <div style="color:#d97706; font-weight:bold; margin-bottom:5px;">剩餘 ${remainder} 分</div>
+                        <div class="remainder-list" id="r-list-${idx}">
+                            ${group.map(m => `
+                                <button class="remainder-btn" onclick="toggleRemainderLocal('${m.name}', this, '${idx}')">
+                                    ${m.name}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <button class="modal-btn" style="background:#3b82f6; margin-top:10px; padding:6px 20px; font-size:1rem;" 
+                            onclick="confirmRemainderLocal(${idx}, ${remainder}, this)">
+                            確認分配
+                        </button>
+                    `;
+                } else {
+                    document.getElementById(`status-area-${idx}`).innerHTML = `<span style="color:#059669; font-weight:bold;">✅ 已均分 (每人 +${avg})</span>`;
+                }
+            });
+
+            btn.innerText = "已執行均分";
+            if(!hasRemainder) {
+                alert("🎉 所有分數完美均分，分配完畢！");
+            } else {
+                alert("部分隊伍產生餘數，請在下方手動分配剩餘分數。");
+            }
+        }
+
+        function toggleRemainderLocal(name, btn, groupIdx) {
+            // Ensure array exists
+            if (!remainderSelections[groupIdx]) remainderSelections[groupIdx] = [];
+            
+            const idx = remainderSelections[groupIdx].indexOf(name);
+            if (idx === -1) {
+                remainderSelections[groupIdx].push(name);
+                btn.classList.add('selected');
+            } else {
+                remainderSelections[groupIdx].splice(idx, 1);
+                btn.classList.remove('selected');
+            }
+        }
+
+        function confirmRemainderLocal(groupIdx, totalRemainder, btn) {
+            const selected = remainderSelections[groupIdx] || [];
+            
+            if (selected.length === 0) {
+                alert("請至少選擇一位學生！");
+                return;
+            }
+
+            const count = selected.length;
+            const pointsPerPerson = Math.floor(totalRemainder / count);
+            const leftOver = totalRemainder % count;
+
+            if (pointsPerPerson > 0) {
+                selected.forEach(name => addScore(name, pointsPerPerson, false));
+                alert(`已將 ${totalRemainder - leftOver} 分分配給選中的 ${count} 位學生 (每人 ${pointsPerPerson} 分)！`);
+            }
+
+            if (leftOver === 0) {
+                const area = document.getElementById(`remainder-area-${groupIdx}`);
+                area.innerHTML = `<div style="color:#059669; font-weight:bold; font-size:1.1rem; margin-top:10px;">✅ 餘數分配完畢！</div>`;
+                document.getElementById(`status-area-${groupIdx}`).innerHTML = `<span style="color:#059669; font-weight:bold;">✅ 已完成分配</span>`;
+            } else {
+                alert(`還有 ${leftOver} 分無法平分，請繼續分配！`);
+                
+                // Update button and clear selections visually
+                btn.setAttribute("onclick", `confirmRemainderLocal(${groupIdx}, ${leftOver}, this)`);
+                // Clear selection array
+                remainderSelections[groupIdx] = [];
+                // Update UI text
+                const area = document.getElementById(`remainder-area-${groupIdx}`);
+                area.querySelector('div').innerText = `剩餘 ${leftOver} 分`;
+                // Remove selected class from buttons
+                const list = document.getElementById(`r-list-${groupIdx}`);
+                list.querySelectorAll('.remainder-btn').forEach(b => b.classList.remove('selected'));
+            }
+        }
+
+        // --- 6. Matter.js ---
+        const Engine = Matter.Engine, Render = Matter.Render, Runner = Matter.Runner, 
+              Bodies = Matter.Bodies, Composite = Matter.Composite, Events = Matter.Events, Body = Matter.Body;
+
+        const engine = Engine.create();
+        const world = engine.world;
+        const width = 600; const height = 600;
+        
+        const render = Render.create({
+            element: document.getElementById('game-canvas-container'),
+            engine: engine,
+            options: { width: width, height: height, wireframes: false, background: 'transparent' }
+        });
+
+        const segments = 24; const r = 280; 
+        for (let i = 0; i < segments; i++) {
+            if (i > 5 && i < 10) continue; 
+            const angle = (i/segments) * Math.PI * 2;
+            Composite.add(world, Bodies.rectangle(
+                300 + Math.cos(angle)*r, 300 + Math.sin(angle)*r, 80, 20, 
+                { isStatic: true, angle: angle + Math.PI/2, render: { visible: false } }
+            ));
+        }
+        Composite.add(world, Bodies.rectangle(220, 550, 150, 20, { isStatic: true, angle: Math.PI/4, render: { visible: false } }));
+        Composite.add(world, Bodies.rectangle(380, 550, 150, 20, { isStatic: true, angle: -Math.PI/4, render: { visible: false } }));
+
+        let peopleBodies = [];
+        let currentPool = [];
+        let currentMode = 'no-repeat';
+
+        function createPerson(data) {
+            const bodyRadius = 58; 
+            const body = Bodies.circle(
+                300 + (Math.random()-0.5)*50, 200 + (Math.random()-0.5)*50, bodyRadius, 
+                {
+                    restitution: 0.9, friction: 0.005, frictionAir: 0.02, density: 0.05,
+                    render: { visible: false }, userData: data
+                }
+            );
+            peopleBodies.push(body);
+            Composite.add(world, body);
+        }
+
+        function initGame() {
+            peopleBodies.forEach(b => Composite.remove(world, b));
+            peopleBodies = [];
+            currentPool = [...fullData];
+            fullData.forEach(d => createPerson(d));
+            updateStatus();
+        }
+
+        initClassData(); renderScoreBoard(); initGame();
+        
+        Events.on(render, 'afterRender', () => {
+            const ctx = render.context;
+            const size = 116; 
+            peopleBodies.forEach(b => {
+                const {x, y} = b.position;
+                const d = b.userData;
+                const img = d.gender === 'boy' ? boyImg : girlImg;
+                ctx.save(); ctx.translate(x, y); ctx.rotate(b.angle);
+                if(img.complete) ctx.drawImage(img, -size/2, -size/2, size, size);
+                
+                ctx.font = "800 32px Arial"; 
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                const w = ctx.measureText(d.name).width;
+                ctx.fillStyle = "rgba(255,255,255,0.85)"; 
+                ctx.fillRect(-w/2 -8, 28, w+16, 28);
+                ctx.fillStyle = "#000"; 
+                ctx.fillText(d.name, 0, 42);
+                ctx.restore();
+            });
+        });
+
+        Render.run(render); Runner.run(Runner.create(), engine);
+
+        // --- 7. 控制與抽獎 ---
+        const btn = document.getElementById('drawBtn');
+        const sound = document.getElementById('shakerSound');
+        sound.volume = 0.5;
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-switch span').forEach(el => el.style.fontWeight = 'normal');
+            const activeInput = document.querySelector(`input[name="mode"][value="${mode}"]`);
+            if(activeInput) activeInput.parentElement.querySelector('span').style.fontWeight = 'bold';
+            if (mode === 'no-repeat') resetGame(); else initGame();
+        }
+
+        function resetGame() { initGame(); btn.disabled = false; btn.innerText = "開始搖人"; }
+
+        function updateStatus() {
+            const el = document.getElementById('status-text');
+            el.innerText = currentMode === 'no-repeat' ? `剩餘: ${currentPool.length}` : `總人數: ${fullData.length}`;
+        }
+
+        function startDraw() {
+            if (currentPool.length === 0) { alert("沒人了！"); return; }
+            btn.disabled = true; btn.innerText = "攪拌中...";
+            sound.currentTime = 0; sound.play().catch(()=>{});
+
+            const interval = setInterval(() => {
+                peopleBodies.forEach(b => {
+                    const force = 0.05 * b.mass; 
+                    Body.applyForce(b, b.position, { x: (Math.random()-0.5)*force, y: (Math.random()-0.5)*force });
+                    Body.setAngularVelocity(b, (Math.random()-0.5)*0.3);
+                });
+            }, 80);
+
+            setTimeout(() => {
+                clearInterval(interval); sound.pause();
+                const count = parseInt(document.getElementById('drawCount').value);
+                let winners = [];
+                if (currentMode === 'repeat') {
+                    winners = [...fullData].sort(()=>0.5-Math.random()).slice(0, count);
+                } else {
+                    const drawN = Math.min(count, currentPool.length);
+                    const shuffled = [...currentPool].sort(()=>0.5-Math.random());
+                    winners = shuffled.slice(0, drawN);
+                    currentPool = currentPool.filter(p => !winners.includes(p));
+                    winners.forEach(w => {
+                        const body = peopleBodies.find(b => b.userData.name === w.name);
+                        if(body) { Composite.remove(world, body); peopleBodies = peopleBodies.filter(b=>b!==body); }
+                    });
+                    updateStatus();
+                }
+
+                playHeroLandingAnimation(winners, () => {
+                    showModal('winner-modal', winners);
+                    highlightWinners(winners);
+                    btn.disabled = false; btn.innerText = "再搖一次";
+                    if(currentMode === 'no-repeat' && currentPool.length === 0) { btn.disabled = true; btn.innerText = "已抽完"; }
+                });
+
+            }, 2500);
+        }
+
+        function showModal(modalId, winners, titleSuffix = "") {
+            const modal = document.getElementById(modalId);
+            if (winners && modalId === 'winner-modal') {
+                const container = document.getElementById('modal-winners');
+                container.innerHTML = winners.map(w => {
+                    const scoreBtns = w.groupIndex !== undefined ? `
+                        <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:center;">
+                            <div style="display:flex; gap:5px; justify-content:center;">
+                                <button class="q-btn btn-1" style="padding:4px 8px; font-size:1rem;" onclick="addScoreInModal(${w.groupIndex}, 1, this)">+1</button>
+                                <button class="q-btn btn-2" style="padding:4px 8px; font-size:1rem;" onclick="addScoreInModal(${w.groupIndex}, 2, this)">+2</button>
+                                <button class="q-btn btn-5" style="padding:4px 8px; font-size:1rem;" onclick="addScoreInModal(${w.groupIndex}, 5, this)">+5</button>
+                            </div>
+                            <div style="display:flex; gap:3px; justify-content:center; align-items:center; margin-top:3px;">
+                                <input type="number" id="manual-score-${w.name}" placeholder="分" style="width:50px; text-align:center; border:1px solid #ccc; border-radius:4px;">
+                                <button onclick="addManualScore(${w.groupIndex}, '${w.name}', this)" class="q-btn btn-5" style="background:#059669; font-size:0.9rem; padding:2px 8px;">加</button>
+                            </div>
+                        </div>
+                    ` : '';
+
+                    return `
+                    <div class="w-card">
+                        ${w.isRecycled ? '<div class="w-tag-support">支援</div>' : ''}
+                        <div class="w-group">${w.groupName || '抽中'}</div>
+                        <img src="${w.gender==='boy'?boyImgPath:girlImgPath}" class="w-img">
+                        <div class="w-name" style="color:${w.gender==='boy'?'#2563eb':'#db2777'}">${w.name}</div>
+                        ${scoreBtns}
+                    </div>
+                `}).join('');
+                if(titleSuffix) modal.querySelector('h2').innerText = `🎉 恭喜同學 (${titleSuffix}) 🎉`;
+                else modal.querySelector('h2').innerText = `🎉 恭喜同學 🎉`;
+            }
+            modal.style.display = 'flex';
+        }
+
+        function closeModal(modalId) { 
+            document.getElementById(modalId).style.display = 'none'; 
+        }
+    </script>
+</body>
+</html>
