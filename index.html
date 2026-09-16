@@ -597,8 +597,8 @@
 
             <div id="bench-area" ondrop="drop(event, -1)" ondragover="allowDrop(event)">
                 <div id="bench-title">
-                    <span>🚫 休息/暫停區 (拖曳學生到此處將不參與抽籤)</span>
-                    <span style="font-size:0.8rem">💡 提示：可直接拖曳名字調整分組</span>
+                    <span>🚫 排除分組／休息區 (拖曳學生到此處後，重新分組也不會被選入)</span>
+                    <span style="font-size:0.8rem">💡 提示：可跨組拖曳；拖到此區即可排除分組</span>
                 </div>
                 <ul id="bench-list"></ul>
             </div>
@@ -629,33 +629,52 @@
         let groupDrawMode = 'no-repeat';
 
         let isScoreSyncOn = true;
+
+        // --- [防呆新增] 每個班級的即時狀態：個人分數、分組、排除名單、組分數等 ---
+        const RUNTIME_STORAGE_KEY = 'classGame_Runtime_v2';
+        let runtimeDataStore = {};
+        let studentScores = {};
         
         // [New] Global variable for remainder tracking per group
         let remainderSelections = {}; 
 
         function initClassData() {
+            loadRuntimeDataStore();
             const storedData = localStorage.getItem('classGame_Manager_v1');
             if (storedData) {
-                let parsedData = JSON.parse(storedData);
-                if (parsedData.length < CLASS_SLOTS) {
-                    for (let i = parsedData.length; i < CLASS_SLOTS; i++) {
-                        parsedData.push({
-                            id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
-                            boys: [], girls: []
-                        });
+                try {
+                    let parsedData = JSON.parse(storedData);
+                    if (!Array.isArray(parsedData)) throw new Error('班級資料格式錯誤');
+                    if (parsedData.length < CLASS_SLOTS) {
+                        for (let i = parsedData.length; i < CLASS_SLOTS; i++) {
+                            parsedData.push({
+                                id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
+                                boys: [], girls: []
+                            });
+                        }
                     }
+                    classDataStore = parsedData;
+                    const lastIndex = localStorage.getItem('classGame_currentIndex');
+                    currentClassIndex = lastIndex ? parseInt(lastIndex) : 0;
+                    if (isNaN(currentClassIndex) || currentClassIndex < 0 || currentClassIndex >= classDataStore.length) currentClassIndex = 0;
+                } catch (e) {
+                    console.warn('班級資料讀取失敗，改用預設資料：', e);
+                    classDataStore = createDefaultClassData();
+                    currentClassIndex = 0;
+                    saveToStorage();
                 }
-                classDataStore = parsedData;
-                const lastIndex = localStorage.getItem('classGame_currentIndex');
-                currentClassIndex = lastIndex ? parseInt(lastIndex) : 0;
             } else {
-                classDataStore = Array.from({ length: CLASS_SLOTS }, (_, i) => ({
-                    id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
-                    boys: i === 0 ? [...defaultBoys] : [], girls: i === 0 ? [...defaultGirls] : []
-                }));
+                classDataStore = createDefaultClassData();
                 saveToStorage();
             }
             loadCurrentClass();
+        }
+
+        function createDefaultClassData() {
+            return Array.from({ length: CLASS_SLOTS }, (_, i) => ({
+                id: i, name: `班級 ${String.fromCharCode(65 + i)}`,
+                boys: i === 0 ? [...defaultBoys] : [], girls: i === 0 ? [...defaultGirls] : []
+            }));
         }
 
         function loadCurrentClass() {
@@ -665,11 +684,92 @@
             document.getElementById('display-class-name').innerText = currentData.name;
             document.getElementById('classNameInput').value = currentData.name;
             updateFullData();
+            restoreCurrentRuntimeState();
+            reconcileRuntimeWithRoster();
         }
 
         function saveToStorage() {
             localStorage.setItem('classGame_Manager_v1', JSON.stringify(classDataStore));
             localStorage.setItem('classGame_currentIndex', currentClassIndex);
+        }
+
+        function loadRuntimeDataStore() {
+            try {
+                const raw = localStorage.getItem(RUNTIME_STORAGE_KEY);
+                runtimeDataStore = raw ? JSON.parse(raw) : {};
+                if (!runtimeDataStore || typeof runtimeDataStore !== 'object' || Array.isArray(runtimeDataStore)) runtimeDataStore = {};
+            } catch (e) {
+                console.warn('即時狀態讀取失敗：', e);
+                runtimeDataStore = {};
+            }
+        }
+
+        function persistRuntimeDataStore() {
+            try {
+                localStorage.setItem(RUNTIME_STORAGE_KEY, JSON.stringify(runtimeDataStore));
+            } catch (e) {
+                console.warn('即時狀態儲存失敗：', e);
+            }
+        }
+
+        function saveCurrentRuntimeState() {
+            // 先抓畫面上最新的個人分數，避免使用者剛輸入就關閉視窗時漏存。
+            document.querySelectorAll('.score-input').forEach(input => {
+                const name = input.id.replace('score-', '');
+                studentScores[name] = parseInt(input.value) || 0;
+            });
+
+            // 同步抓取目前各組手動輸入的分數。
+            document.querySelectorAll('input[id^="group-score-"]').forEach(input => {
+                const idx = parseInt(input.id.replace('group-score-', ''));
+                if (!isNaN(idx)) currentGroupScores[idx] = parseInt(input.value) || 0;
+            });
+
+            runtimeDataStore[String(currentClassIndex)] = {
+                studentScores: { ...studentScores },
+                currentGroups: currentGroups.map(group => group.map(s => ({ ...s }))),
+                benchedStudents: benchedStudents.map(s => ({ ...s })),
+                currentGroupScores: [...currentGroupScores],
+                currentGroupColors: [...currentGroupColors],
+                groupDrawMode: groupDrawMode,
+                isScoreSyncOn: isScoreSyncOn
+            };
+            persistRuntimeDataStore();
+        }
+
+        function restoreCurrentRuntimeState() {
+            const state = runtimeDataStore[String(currentClassIndex)] || {};
+            studentScores = state.studentScores && typeof state.studentScores === 'object' ? { ...state.studentScores } : {};
+            currentGroups = Array.isArray(state.currentGroups) ? state.currentGroups.map(group => Array.isArray(group) ? group.map(s => ({ ...s })) : []) : [];
+            benchedStudents = Array.isArray(state.benchedStudents) ? state.benchedStudents.map(s => ({ ...s })) : [];
+            currentGroupScores = Array.isArray(state.currentGroupScores) ? [...state.currentGroupScores] : [0,0,0,0,0];
+            currentGroupColors = Array.isArray(state.currentGroupColors) && state.currentGroupColors.length
+                ? [...state.currentGroupColors]
+                : ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+            while (currentGroupScores.length < currentGroups.length) currentGroupScores.push(0);
+            while (currentGroupColors.length < currentGroups.length) currentGroupColors.push('#64748b');
+            groupDrawMode = state.groupDrawMode === 'repeat' ? 'repeat' : 'no-repeat';
+            isScoreSyncOn = state.isScoreSyncOn !== undefined ? !!state.isScoreSyncOn : true;
+        }
+
+        function reconcileRuntimeWithRoster() {
+            const validByName = new Map(fullData.map(s => [s.name, s]));
+            const fixStudent = (s) => {
+                const latest = validByName.get(s.name);
+                return latest ? { ...latest, drawn: !!s.drawn } : null;
+            };
+
+            currentGroups = currentGroups.map(group => group.map(fixStudent).filter(Boolean));
+            benchedStudents = benchedStudents.map(fixStudent).filter(Boolean);
+
+            // 若某人已在排除區，確保他不會同時殘留在任何組別。
+            const benchedNames = new Set(benchedStudents.map(s => s.name));
+            currentGroups = currentGroups.map(group => group.filter(s => !benchedNames.has(s.name)));
+
+            // 清掉已不存在學生的舊分數，但保留目前名單的既有分數。
+            const cleanedScores = {};
+            fullData.forEach(s => { cleanedScores[s.name] = parseInt(studentScores[s.name]) || 0; });
+            studentScores = cleanedScores;
         }
 
         function updateFullData() {
@@ -679,10 +779,65 @@
             ];
         }
 
+        function applyPersistentControlState() {
+            const syncBtn = document.getElementById('syncBtn');
+            if (syncBtn) {
+                syncBtn.innerText = isScoreSyncOn ? '🔄 分數連動：開啟' : '🔄 分數連動：關閉';
+                syncBtn.classList.toggle('off', !isScoreSyncOn);
+            }
+            document.querySelectorAll('input[name="group-mode"]').forEach(input => {
+                input.checked = input.value === groupDrawMode;
+            });
+        }
+
+        function saveAllPersistentState() {
+            saveToStorage();
+            saveCurrentRuntimeState();
+        }
+
+        function setupAutoPersistence() {
+            // 設定名單只要有輸入就立即存檔，不必等按下「儲存」才有防關閉保護。
+            ['classNameInput', 'boysInput', 'girlsInput'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', () => {
+                    if (document.getElementById('settings-modal').style.display === 'flex') {
+                        saveCurrentInputToMemory();
+                        saveToStorage();
+                    }
+                });
+            });
+
+            // 個人分數與組分數在鍵入當下就同步進 localStorage。
+            document.addEventListener('input', (e) => {
+                const target = e.target;
+                if (target.classList && target.classList.contains('score-input')) {
+                    const name = target.id.replace('score-', '');
+                    studentScores[name] = parseInt(target.value) || 0;
+                    saveCurrentRuntimeState();
+                } else if (target.id && target.id.startsWith('group-score-')) {
+                    const idx = parseInt(target.id.replace('group-score-', ''));
+                    if (!isNaN(idx)) {
+                        currentGroupScores[idx] = parseInt(target.value) || 0;
+                        saveCurrentRuntimeState();
+                    }
+                }
+            });
+
+            // 三層防呆：一般關閉、行動裝置 pagehide、切到背景時都再存一次。
+            window.addEventListener('beforeunload', saveAllPersistentState);
+            window.addEventListener('pagehide', saveAllPersistentState);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') saveAllPersistentState();
+            });
+        }
+
         function exportData() {
+            saveAllPersistentState();
             const dataToExport = {
                 data: classDataStore,
                 currentIndex: currentClassIndex,
+                runtime: runtimeDataStore,
                 timestamp: new Date().toISOString()
             };
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport));
@@ -707,11 +862,14 @@
                         if(confirm("確定要還原備份嗎？\n這將覆蓋目前所有的班級與分數資料！")) {
                             classDataStore = importedObj.data;
                             currentClassIndex = importedObj.currentIndex || 0;
+                            runtimeDataStore = importedObj.runtime && typeof importedObj.runtime === 'object' ? importedObj.runtime : {};
                             saveToStorage();
+                            persistRuntimeDataStore();
                             loadCurrentClass();
                             renderScoreBoard();
                             resetGame();
-                            resetGroupStateOnClassChange();
+                            renderCurrentGroupState();
+                            applyPersistentControlState();
                             closeModal('settings-modal');
                             alert("還原成功！");
                         }
@@ -749,6 +907,7 @@
 
         function changeClassSlot(index) {
             saveCurrentInputToMemory();
+            saveCurrentRuntimeState();
             currentClassIndex = parseInt(index);
             const newData = classDataStore[currentClassIndex];
             document.getElementById('classNameInput').value = newData.name;
@@ -758,7 +917,8 @@
             loadCurrentClass();
             renderScoreBoard();
             resetGame();
-            resetGroupStateOnClassChange();
+            renderCurrentGroupState();
+            applyPersistentControlState();
         }
 
         function saveCurrentInputToMemory() {
@@ -782,7 +942,25 @@
             document.getElementById('bench-list').innerHTML = '';
         }
 
-        function openGroupModal() { document.getElementById('group-modal').style.display = 'flex'; }
+        function renderCurrentGroupState() {
+            if (currentGroups.length > 0) {
+                renderGroupsUI();
+            } else {
+                const resultContainer = document.getElementById('group-results');
+                resultContainer.innerHTML = `
+                    <div id="group-placeholder" style="color:#999; font-style:italic; width:100%; margin-top: 50px;">
+                        請點選上方按鈕進行隨機分組...
+                    </div>
+                `;
+                renderBenchUI();
+            }
+        }
+
+        function openGroupModal() {
+            renderCurrentGroupState();
+            applyPersistentControlState();
+            document.getElementById('group-modal').style.display = 'flex';
+        }
 
         function setGroupMode(mode) {
             groupDrawMode = mode;
@@ -790,25 +968,34 @@
             inputs.forEach(input => {
                 if (input.value === mode) input.checked = true;
             });
+            saveCurrentRuntimeState();
         }
 
         function generateGroups(numGroups) {
             if (fullData.length === 0) { alert("目前沒有學生名單！"); return; }
-            let shuffled = [...fullData].sort(() => 0.5 - Math.random());
+
+            // 排除區的人保留在最下方，之後按「分2/3/4/5組」都不再被選入。
+            const benchedNames = new Set(benchedStudents.map(s => s.name));
+            let eligibleStudents = fullData.filter(student => !benchedNames.has(student.name));
+            if (eligibleStudents.length === 0) { alert("目前所有學生都在排除分組區，沒有可分組的人！"); return; }
+
+            let shuffled = [...eligibleStudents].sort(() => 0.5 - Math.random());
             currentGroups = Array.from({ length: numGroups }, () => []);
-            benchedStudents = [];
             currentGroupScores = Array(numGroups).fill(0);
             currentGroupColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+            benchedStudents = benchedStudents.map(s => ({ ...s, drawn: false }));
 
             shuffled.forEach((student, index) => { 
                 currentGroups[index % numGroups].push({ ...student, drawn: false }); 
             });
             renderGroupsUI();
+            saveCurrentRuntimeState();
         }
         
         function setGroupColor(index, color) {
             currentGroupColors[index] = color;
             renderGroupsUI();
+            saveCurrentRuntimeState();
         }
 
         function renderGroupsUI() {
@@ -915,6 +1102,7 @@
             if (targetGroupIndex === -1) benchedStudents.push(student);
             else currentGroups[targetGroupIndex].push(student);
             renderGroupsUI();
+            saveCurrentRuntimeState();
         }
 
         // --- 華麗登場動畫邏輯 & 音效 ---
@@ -980,6 +1168,7 @@
             if (groupDrawMode === 'no-repeat' && !isRecycled) {
                 winnerData.drawn = true;
                 renderGroupsUI();
+                saveCurrentRuntimeState();
             }
 
             const winnerDisplay = { ...winnerData, groupName: `第 ${groupIndex + 1} 組`, groupIndex: groupIndex, isRecycled: isRecycled };
@@ -1022,7 +1211,10 @@
             });
 
             if(winners.length === 0) { alert("所有組別都沒人！"); return; }
-            if (uiNeedsUpdate) renderGroupsUI();
+            if (uiNeedsUpdate) {
+                renderGroupsUI();
+                saveCurrentRuntimeState();
+            }
             
             playHeroLandingAnimation(winners, () => {
                 showModal('winner-modal', winners);
@@ -1033,11 +1225,19 @@
             if(confirm("確定要重置所有人的抽籤狀態嗎？\n(所有人將變回未被選中狀態，分數保留)")) {
                 currentGroups.forEach(group => group.forEach(s => s.drawn = false));
                 renderGroupsUI();
+                saveCurrentRuntimeState();
             }
         }
 
-        function updateGroupScoreVal(idx, val) { currentGroupScores[idx] = parseInt(val); }
-        function addGroupScore(idx, pts) { currentGroupScores[idx] += pts; renderGroupsUI(); }
+        function updateGroupScoreVal(idx, val) {
+            currentGroupScores[idx] = parseInt(val) || 0;
+            saveCurrentRuntimeState();
+        }
+        function addGroupScore(idx, pts) {
+            currentGroupScores[idx] = (parseInt(currentGroupScores[idx]) || 0) + pts;
+            renderGroupsUI();
+            saveCurrentRuntimeState();
+        }
         
         function addScoreInModal(groupIdx, points, btnElement) {
             addGroupScore(groupIdx, points);
@@ -1065,16 +1265,21 @@
             if(confirm("確定歸零？")) {
                 currentGroupScores.fill(0);
                 renderGroupsUI();
+                saveCurrentRuntimeState();
             }
         }
 
         function parseInput(str) { return str.split(/[\n,，、]/).map(s => s.trim()).filter(s => s.length > 0); }
         function saveSettings() {
+            saveCurrentRuntimeState();
             saveCurrentInputToMemory();
             saveToStorage();
             loadCurrentClass();
             renderScoreBoard();
+            saveCurrentRuntimeState();
             resetGame();
+            renderCurrentGroupState();
+            applyPersistentControlState();
             closeModal('settings-modal');
         }
 
@@ -1089,10 +1294,11 @@
                 const div = document.createElement('div');
                 div.className = `student-card ${gender}`;
                 div.id = `card-${name}`;
+                const savedScore = parseInt(studentScores[name]) || 0;
                 div.innerHTML = `
                     <div class="card-header">
                         <span class="student-name" title="${name}" onclick="highlightStudent('${name}')">${name}</span>
-                        <input type="number" id="score-${name}" class="score-input" value="0" onclick="this.select()">
+                        <input type="number" id="score-${name}" class="score-input" value="${savedScore}" onclick="this.select()">
                     </div>
                     <div class="quick-btns">
                         <button class="q-btn btn-1" onclick="addScore('${name}', 1)">+1</button>
@@ -1108,14 +1314,8 @@
 
         function toggleScoreSync() {
             isScoreSyncOn = !isScoreSyncOn;
-            const btn = document.getElementById('syncBtn');
-            if (isScoreSyncOn) {
-                btn.innerText = "🔄 分數連動：開啟";
-                btn.classList.remove('off');
-            } else {
-                btn.innerText = "🔄 分數連動：關閉";
-                btn.classList.add('off');
-            }
+            applyPersistentControlState();
+            saveCurrentRuntimeState();
         }
 
         function addScore(name, points, allowSync = true) {
@@ -1125,6 +1325,8 @@
             
             input.style.backgroundColor = "#d1fae5";
             setTimeout(() => input.style.backgroundColor = "#fff", 200);
+
+            studentScores[name] = parseInt(input.value) || 0;
 
             if (isScoreSyncOn && allowSync) {
                 currentGroups.forEach((group, groupIdx) => {
@@ -1136,10 +1338,18 @@
                     }
                 });
             }
+            saveCurrentRuntimeState();
         }
 
         function confirmClearScores() {
-            if(confirm("歸零所有學生分數？")) document.querySelectorAll('.score-input').forEach(input => input.value = 0);
+            if(confirm("歸零所有學生分數？")) {
+                document.querySelectorAll('.score-input').forEach(input => {
+                    input.value = 0;
+                    const name = input.id.replace('score-', '');
+                    studentScores[name] = 0;
+                });
+                saveCurrentRuntimeState();
+            }
         }
 
         function highlightWinners(winners) {
@@ -1442,7 +1652,12 @@
             updateStatus();
         }
 
-        initClassData(); renderScoreBoard(); initGame();
+        initClassData();
+        renderScoreBoard();
+        renderCurrentGroupState();
+        initGame();
+        applyPersistentControlState();
+        setupAutoPersistence();
         
         Events.on(render, 'afterRender', () => {
             const ctx = render.context;
