@@ -337,11 +337,18 @@
         #bench-list { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; padding: 0; margin: 0; min-height: 30px; align-items: center; }
         #bench-list .draggable-student { font-size: 0.9rem; padding: 2px 8px; margin: 0; background: #e2e8f0; color: #64748b; }
         
-        .group-score-area { background: #f5f3ff; border-radius: 8px; padding: 4px; border: 1px dashed #8b5cf6; margin-top: auto; flex-shrink: 0; }
-        .group-score-display { display: flex; justify-content: center; align-items: center; gap: 3px; margin-bottom: 3px; }
-        .group-score-input { width: 45px; height: 24px; font-size: 1.1rem; border: 2px solid #8b5cf6; color: #7c3aed; }
-        .group-btn-area { display: flex; gap: 2px; justify-content: center;}
-        .g-btn { border:none; border-radius: 4px; padding: 2px; font-size: 0.75rem; cursor: pointer; color: white; font-weight: bold; flex: 1; transition: opacity 0.1s;}
+        .group-score-area { background: #f5f3ff; border-radius: 10px; padding: 8px 6px; border: 2px dashed #8b5cf6; margin-top: auto; flex-shrink: 0; }
+        .group-score-display { display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .group-score-display > span { font-size: 1.05rem; font-weight: 900; color: #334155; white-space: nowrap; }
+        .group-score-input {
+            width: 100px; min-width: 100px; height: 38px; box-sizing: border-box;
+            font-size: 1.5rem; font-weight: 900; text-align: center; line-height: 1;
+            border: 3px solid #8b5cf6; border-radius: 7px; color: #7c3aed; background: #fff;
+            padding: 2px 6px; font-variant-numeric: tabular-nums;
+        }
+        .group-score-display .group-score-input { box-shadow: 0 2px 7px rgba(15, 23, 42, 0.12); }
+        .group-btn-area { display: flex; gap: 3px; justify-content: center;}
+        .g-btn { border:none; border-radius: 5px; padding: 4px 3px; font-size: 0.9rem; cursor: pointer; color: white; font-weight: bold; flex: 1; transition: opacity 0.1s;}
         .g-btn:hover { opacity: 0.9; }
 
         /* Game Over Modal Styles */
@@ -1046,7 +1053,7 @@
                             <button class="g-btn bg-p5" style="background:${themeColor};" onclick="addGroupScore(${i}, 5)">+5</button>
                         </div>
                         <div style="display:flex; gap:3px; margin-top:3px; align-items:center;">
-                            <input type="number" id="manual-group-input-${i}" placeholder="自訂" class="group-score-input" style="width:50px; flex:1; font-size:0.9rem; border-color:#ccc; color:#333;">
+                            <input type="number" id="manual-group-input-${i}" placeholder="自訂" class="group-score-input" style="width:70px; min-width:70px; flex:1; height:32px; font-size:1rem; font-weight:800; border-width:2px; border-color:#ccc; color:#333;">
                             <button class="g-btn" style="background:#64748b; padding:2px 8px; flex:0 0 auto;" onclick="applyGroupManualScore(${i})">確認</button>
                         </div>
                     </div>
